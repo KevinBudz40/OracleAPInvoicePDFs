@@ -1,0 +1,334 @@
+Attribute VB_Name = "Module1"
+Option Explicit
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  AP Invoice PDF Downloader
+'  Oracle Fusion Cloud — Payables
+'
+'  Adapted from Oracle Payables Standard Invoice Import FBDI template.
+'  CommandButton1 on Sheet1 ("Instructions") calls DownloadInvoicePDFs.
+'
+'  Sheet layout (rename in Excel before use):
+'    Sheet1  →  Instructions   (keep Oracle layout, button stays)
+'    Sheet2  →  Parameters     (config + invoice list)
+'    Sheet3  →  Invoice_Log    (auto-populated results)
+' ═══════════════════════════════════════════════════════════════════════════════
+
+' ── Sheet names (rename Sheet2/Sheet3 tabs to match) ─────────────────────────
+Private Const SH_PARAMS As String = "Parameters"
+Private Const SH_LOG    As String = "Invoice_Log"
+
+' ── Parameter cell addresses on the Parameters sheet ─────────────────────────
+Private Const P_HOST   As String = "B3"   ' Oracle Cloud host URL
+Private Const P_USER   As String = "B4"   ' Username
+Private Const P_PASS   As String = "B5"   ' Password
+Private Const P_PROJ   As String = "B8"   ' Project Number
+Private Const P_FROM   As String = "B9"   ' From Date (YYYY-MM-DD)
+Private Const P_TO     As String = "B10"  ' To Date   (YYYY-MM-DD)
+Private Const P_FOLDER As String = "B13"  ' PDF save folder
+' Invoice numbers start at row 17, column A (below a small header at row 16)
+
+' ── Colours ──────────────────────────────────────────────────────────────────
+Private Const CLR_GREEN  As Long = 13561798   ' RGB(198,239,206)
+Private Const CLR_RED    As Long = 13375687   ' RGB(255,199,206)
+Private Const CLR_YELLOW As Long = 10079232   ' RGB(255,235,156)
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  ENTRY POINT  —  called by CommandButton1_Click on Sheet1
+' ═══════════════════════════════════════════════════════════════════════════════
+Public Sub DownloadInvoicePDFs()
+
+    ' ── read and validate config ──────────────────────────────────────────────
+    Dim host   As String, user  As String, pass_  As String
+    Dim proj   As String, fromD As String, toD    As String
+    Dim folder As String
+
+    With ThisWorkbook.Sheets(SH_PARAMS)
+        host   = Trim(.Range(P_HOST).Value)
+        user   = Trim(.Range(P_USER).Value)
+        pass_  = Trim(.Range(P_PASS).Value)
+        proj   = Trim(.Range(P_PROJ).Value)
+        fromD  = Format(.Range(P_FROM).Value, "YYYY-MM-DD")
+        toD    = Format(.Range(P_TO).Value,   "YYYY-MM-DD")
+        folder = Trim(.Range(P_FOLDER).Value)
+    End With
+
+    If host = "" Or user = "" Or pass_ = "" Then
+        MsgBox "Please fill in Host URL, Username and Password on the Parameters sheet.", _
+               vbExclamation, "Configuration Incomplete"
+        Exit Sub
+    End If
+    If Right(folder, 1) <> "\" Then folder = folder & "\"
+    If Dir(folder, vbDirectory) = "" Then MkDir folder
+
+    ' ── read invoice list (col A, rows 17+) ───────────────────────────────────
+    Dim wsPar As Worksheet
+    Set wsPar = ThisWorkbook.Sheets(SH_PARAMS)
+    Dim lastRow As Long
+    lastRow = wsPar.Cells(wsPar.Rows.Count, 1).End(xlUp).Row
+
+    If lastRow < 17 Then
+        MsgBox "No invoice numbers found." & vbLf & _
+               "Enter invoice numbers in column A starting at row 17 of the Parameters sheet.", _
+               vbExclamation, "No Invoices"
+        Exit Sub
+    End If
+
+    ' ── initialise log sheet ──────────────────────────────────────────────────
+    InitLog
+
+    Dim logRow As Long : logRow = 3
+    Dim r As Long
+
+    For r = 17 To lastRow
+        Dim invNum As String
+        invNum = Trim(wsPar.Cells(r, 1).Value)
+        If invNum = "" Then GoTo NextInv
+
+        Application.StatusBar = "Invoice " & invNum & "  (" & (r - 16) & " of " & (lastRow - 16) & ")"
+
+        ' ── resolve InvoiceNumber → InvoiceId ────────────────────────────────
+        Dim invId As String
+        invId = ResolveInvoiceId(host, user, pass_, invNum)
+        If invId = "" Then
+            WriteLog logRow, invNum, "", "", "Invoice not found", "", False
+            logRow = logRow + 1
+            GoTo NextInv
+        End If
+
+        ' ── fetch SCANNED_INVOICE_IMAGE attachments ───────────────────────────
+        Dim attUrl As String
+        attUrl = host & "/fscmRestApi/resources/11.13.18.05/invoices/" & invId & _
+                 "/child/attachments?q=CategoryName%3D%27SCANNED_INVOICE_IMAGE%27"
+        Dim attJson As String
+        attJson = HttpGet(attUrl, user, pass_)
+
+        If attJson = "" Then
+            WriteLog logRow, invNum, invId, "", "Attachments call failed", "", False
+            logRow = logRow + 1
+            GoTo NextInv
+        End If
+
+        Dim items() As String
+        Dim nItems  As Long
+        nItems = ParseItems(attJson, items)
+
+        If nItems = 0 Then
+            WriteLog logRow, invNum, invId, "", "No SCANNED_INVOICE_IMAGE attachments", "", Null
+            logRow = logRow + 1
+            GoTo NextInv
+        End If
+
+        ' ── download each attachment ──────────────────────────────────────────
+        Dim j As Long
+        For j = 0 To nItems - 1
+            Dim fName As String : fName = JVal(items(j), "FileName")
+            Dim fHref As String : fHref = FileContentsHref(items(j))
+
+            If fHref = "" Then
+                WriteLog logRow, invNum, invId, fName, "No FileContents link", "", False
+            Else
+                Dim savePath As String
+                savePath = folder & SafeName(fName, invNum & "_att" & j & ".pdf")
+                Dim bytes As Long
+                bytes = SaveBinary(fHref, user, pass_, savePath)
+                If bytes > 0 Then
+                    WriteLog logRow, invNum, invId, fName, _
+                             "Saved  " & Format(bytes, "#,##0") & " bytes", savePath, True
+                Else
+                    WriteLog logRow, invNum, invId, fName, "Download failed", "", False
+                End If
+            End If
+            logRow = logRow + 1
+        Next j
+
+NextInv:
+        DoEvents
+    Next r
+
+    Application.StatusBar = False
+    ThisWorkbook.Sheets(SH_LOG).Activate
+    MsgBox "Done.  " & (logRow - 3) & " result row(s) written to Invoice_Log.", _
+           vbInformation, "AP Invoice PDF Downloader"
+End Sub
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  ORACLE REST HELPERS
+' ═══════════════════════════════════════════════════════════════════════════════
+Private Function ResolveInvoiceId(host As String, user As String, pass_ As String, _
+                                   invNum As String) As String
+    Dim url As String
+    url = host & "/fscmRestApi/resources/11.13.18.05/invoices" & _
+          "?q=InvoiceNumber%3D%27" & invNum & "%27" & _
+          "&fields=InvoiceId%2CInvoiceNumber&limit=1"
+    Dim json As String : json = HttpGet(url, user, pass_)
+    If json = "" Then Exit Function
+    Dim items() As String
+    If ParseItems(json, items) > 0 Then ResolveInvoiceId = JVal(items(0), "InvoiceId")
+End Function
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  HTTP
+' ═══════════════════════════════════════════════════════════════════════════════
+Private Function HttpGet(url As String, user As String, pass_ As String) As String
+    On Error GoTo ErrH
+    Dim h As Object
+    Set h = CreateObject("WinHttp.WinHttpRequest.5.1")
+    h.Open "GET", url, False
+    h.SetRequestHeader "Authorization", "Basic " & B64(user & ":" & pass_)
+    h.SetRequestHeader "Accept", "application/json"
+    h.Send
+    If h.Status = 200 Then HttpGet = h.ResponseText Else _
+        Debug.Print "HTTP " & h.Status & " " & Left(url, 100)
+    Exit Function
+ErrH: Debug.Print "HttpGet: " & Err.Description
+End Function
+
+Private Function SaveBinary(url As String, user As String, pass_ As String, _
+                             path As String) As Long
+    On Error GoTo ErrH
+    Dim h As Object
+    Set h = CreateObject("WinHttp.WinHttpRequest.5.1")
+    h.Open "GET", url, False
+    h.SetRequestHeader "Authorization", "Basic " & B64(user & ":" & pass_)
+    h.SetRequestHeader "Accept", "*/*"
+    h.Send
+    If h.Status <> 200 Then
+        Debug.Print "SaveBinary HTTP " & h.Status
+        Exit Function
+    End If
+    ' reuse the ADODB.Stream pattern already present in the original GenCSV
+    Dim st As Object
+    Set st = CreateObject("ADODB.Stream")
+    st.Type = 1          ' adTypeBinary
+    st.Open
+    st.Write h.ResponseBody
+    st.SaveToFile path, 2  ' adSaveCreateOverWrite
+    st.Close
+    SaveBinary = FileLen(path)
+    Exit Function
+ErrH: Debug.Print "SaveBinary: " & Err.Description
+End Function
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  JSON HELPERS
+' ═══════════════════════════════════════════════════════════════════════════════
+Private Function ParseItems(json As String, ByRef items() As String) As Long
+    ReDim items(0 To 500)
+    Dim p As Long : p = InStr(json, """items"":[")
+    If p = 0 Then Exit Function
+    p = InStr(p, json, "[") + 1
+    Dim depth As Long, oStart As Long, count As Long
+    Do While p <= Len(json)
+        Dim c As String : c = Mid(json, p, 1)
+        Select Case c
+            Case "{" : If depth = 0 Then oStart = p : depth = depth + 1
+            Case "}" : depth = depth - 1
+                       If depth = 0 And oStart > 0 Then
+                           items(count) = Mid(json, oStart, p - oStart + 1)
+                           count = count + 1 : oStart = 0
+                       End If
+            Case "]" : If depth = 0 Then Exit Do
+        End Select
+        p = p + 1
+    Loop
+    ParseItems = count
+End Function
+
+Private Function JVal(json As String, key As String) As String
+    Dim pat As String : pat = """" & key & """:"
+    Dim sp As Long    : sp = InStr(json, pat)
+    If sp = 0 Then Exit Function
+    sp = sp + Len(pat)
+    Do While sp <= Len(json) And Mid(json, sp, 1) = " " : sp = sp + 1 : Loop
+    Dim ch As String : ch = Mid(json, sp, 1)
+    If ch = """" Then
+        sp = sp + 1
+        Dim ep As Long : ep = sp
+        Do While ep <= Len(json)
+            If Mid(json, ep, 1) = """" And Mid(json, ep - 1, 1) <> "\" Then Exit Do
+            ep = ep + 1
+        Loop
+        JVal = Mid(json, sp, ep - sp)
+    ElseIf Left(Mid(json, sp), 4) = "null" Then
+        JVal = ""
+    Else
+        Dim e1 As Long : e1 = InStr(sp, json, ",") : If e1 = 0 Then e1 = Len(json)
+        Dim e2 As Long : e2 = InStr(sp, json, "}") : If e2 = 0 Then e2 = Len(json)
+        JVal = Trim(Mid(json, sp, IIf(e1 < e2, e1, e2) - sp))
+    End If
+End Function
+
+Private Function FileContentsHref(itemJson As String) As String
+    Dim p As Long : p = 1
+    Do
+        Dim np As Long : np = InStr(p, itemJson, """name"":""FileContents""")
+        If np = 0 Then Exit Do
+        Dim hp As Long : hp = InStrRev(itemJson, """href"":""", np)
+        If hp > 0 Then
+            Dim hs As Long : hs = hp + 8
+            Dim he As Long : he = InStr(hs, itemJson, """")
+            FileContentsHref = Mid(itemJson, hs, he - hs)
+            Exit Function
+        End If
+        p = np + 1
+    Loop
+End Function
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  BASE-64  (MSXML2 — same COM library Oracle tools use)
+' ═══════════════════════════════════════════════════════════════════════════════
+Private Function B64(s As String) As String
+    Dim xml  As Object : Set xml  = CreateObject("MSXML2.DOMDocument")
+    Dim node As Object : Set node = xml.createElement("b64")
+    node.DataType = "bin.base64"
+    Dim st As Object : Set st = CreateObject("ADODB.Stream")
+    st.Type = 2 : st.CharSet = "us-ascii" : st.Open : st.WriteText s
+    st.Position = 0 : st.Type = 1
+    node.nodeTypedValue = st.Read : st.Close
+    B64 = Replace(node.Text, vbLf, "")
+End Function
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  UTILITY
+' ═══════════════════════════════════════════════════════════════════════════════
+Private Function SafeName(name As String, default_ As String) As String
+    If Trim(name) = "" Then SafeName = default_ : Exit Function
+    Dim s As String : s = name
+    Dim x As Variant
+    For Each x In Array("/", "\", ":", "*", "?", """", "<", ">", "|")
+        s = Replace(s, x, "_")
+    Next x
+    SafeName = s
+End Function
+
+' ═══════════════════════════════════════════════════════════════════════════════
+'  LOG SHEET
+' ═══════════════════════════════════════════════════════════════════════════════
+Private Sub InitLog()
+    Dim ws As Worksheet : Set ws = ThisWorkbook.Sheets(SH_LOG)
+    ws.Range("A3:G" & ws.Rows.Count).ClearContents
+    ws.Range("A3:G" & ws.Rows.Count).Interior.ColorIndex = xlNone
+End Sub
+
+Private Sub WriteLog(rowNum As Long, invNum As String, invId As String, _
+                     fName As String, status As String, savedPath As String, _
+                     Optional success As Variant)
+    Dim ws As Worksheet : Set ws = ThisWorkbook.Sheets(SH_LOG)
+    ws.Cells(rowNum, 1).Value = invNum
+    ws.Cells(rowNum, 2).Value = invId
+    ws.Cells(rowNum, 3).Value = fName
+    ws.Cells(rowNum, 4).Value = status
+    ws.Cells(rowNum, 5).Value = savedPath
+    ws.Cells(rowNum, 6).Value = Now()
+    Dim clr As Long
+    If IsMissing(success) Or IsNull(success) Then
+        clr = CLR_YELLOW
+    ElseIf CBool(success) Then
+        clr = CLR_GREEN
+    Else
+        clr = CLR_RED
+    End If
+    ws.Cells(rowNum, 4).Interior.Color = clr
+    DoEvents
+End Sub

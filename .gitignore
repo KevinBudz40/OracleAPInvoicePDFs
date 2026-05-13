@@ -1,0 +1,21 @@
+# Downloaded PDFs
+invoice_pdfs/
+
+# Oracle FBDI templates (Oracle IP — do not commit)
+**/PayablesStandard*.xlsm
+**/PayablesStandard*_VBA/
+*_unprotected.xlsm
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Diagnostic / temp output
+res.txt
+*.tmp
+
+# Excel temp files
+~$*.xlsm
+~$*.xlsx
