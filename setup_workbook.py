@@ -30,6 +30,7 @@ import win32com.client as win32
 WORKBOOK  = r"D:\Nuke\PayablesStandardInvoiceImportTemplate_unprotected.xlsm"
 OUT_FILE  = r"D:\Nuke\AP_Invoice_Downloader.xlsm"
 VBA_FILE  = r"D:\Nuke\NewModule1.bas"
+FORM_FILE = r"D:\Nuke\PasswordForm.frm"
 
 # ── Parameters sheet contents ─────────────────────────────────────────────────
 # Column A labels
@@ -37,7 +38,7 @@ PARAM_LABELS = {
     "A1":  "AP Invoice PDF Downloader — Configuration",
     "A3":  "Host URL",
     "A4":  "Username",
-    "A5":  "Password",
+    # A5 intentionally omitted — password is prompted at runtime (masked)
     "A7":  "─── Date Range ───",
     "A8":  "Project Number",
     "A9":  "From Date",
@@ -146,6 +147,26 @@ def replace_module1(wb, new_code):
     print("  Module1 code injected successfully.")
 
 
+def import_password_form(wb):
+    """
+    Import PasswordForm.frm into the VBA project.
+    Removes any existing PasswordForm first so re-running setup is safe.
+    The .frm builds its controls entirely at runtime — no companion .frx needed.
+    """
+    vbp = wb.VBProject
+
+    # Remove stale copy if present
+    for i in range(1, vbp.VBComponents.Count + 1):
+        comp = vbp.VBComponents.Item(i)
+        if comp.Name == "PasswordForm":
+            vbp.VBComponents.Remove(comp)
+            print("  Removed existing PasswordForm.")
+            break
+
+    vbp.VBComponents.Import(os.path.abspath(FORM_FILE))
+    print("  PasswordForm imported.")
+
+
 def replace_button_handler(wb):
     """
     Find the Sheet1 VBComponent and swap CommandButton1_Click so it calls
@@ -200,7 +221,8 @@ def replace_button_handler(wb):
 
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    for path, label in [(WORKBOOK, "source workbook"), (VBA_FILE, "VBA module")]:
+    for path, label in [(WORKBOOK, "source workbook"), (VBA_FILE, "VBA module"),
+                        (FORM_FILE, "password form")]:
         if not os.path.isfile(path):
             sys.exit(f"ERROR: {label} not found:\n  {path}")
 
@@ -257,7 +279,10 @@ def main():
             print("    › Macro Settings › [x] Trust access to the VBA project object model")
             raise
 
-        print("\n[5/6] Updating CommandButton1_Click and button caption …")
+        print("\n[5/7] Importing PasswordForm …")
+        import_password_form(wb)
+
+        print("\n[6/7] Updating CommandButton1_Click and button caption …")
         replace_button_handler(wb)
 
         # Set button caption directly via the OLEObjects COM interface
@@ -268,15 +293,15 @@ def main():
         except Exception as e:
             print(f"  Note: could not rename button caption: {e}")
 
-        print(f"\n[6/6] Saving as {OUT_FILE} …")
+        print(f"\n[7/7] Saving as {OUT_FILE} …")
         # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
         wb.SaveAs(OUT_FILE, FileFormat=52)
         wb.Close(False)
         wb = None
 
         print(f"\n✓  Done!  Open this file in Excel:\n   {OUT_FILE}")
-        print("\nNext step: fill in Username (B4) and Password (B5)")
-        print("on the Parameters sheet, then click the Download button.")
+        print("\nNext step: fill in Username (B4) on the Parameters sheet,")
+        print("then click Download Invoice PDFs — you will be prompted for the password.")
 
     except Exception as e:
         print(f"\nFATAL: {e}")

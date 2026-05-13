@@ -21,7 +21,7 @@ Private Const SH_LOG    As String = "Invoice_Log"
 ' ── Parameter cell addresses on the Parameters sheet ─────────────────────────
 Private Const P_HOST   As String = "B3"   ' Oracle Cloud host URL
 Private Const P_USER   As String = "B4"   ' Username
-Private Const P_PASS   As String = "B5"   ' Password
+' Password is prompted at runtime (masked) — not stored on the sheet
 Private Const P_PROJ   As String = "B8"   ' Project Number
 Private Const P_FROM   As String = "B9"   ' From Date (YYYY-MM-DD)
 Private Const P_TO     As String = "B10"  ' To Date   (YYYY-MM-DD)
@@ -46,16 +46,23 @@ Public Sub DownloadInvoicePDFs()
     With ThisWorkbook.Sheets(SH_PARAMS)
         host   = Trim(.Range(P_HOST).Value)
         user   = Trim(.Range(P_USER).Value)
-        pass_  = Trim(.Range(P_PASS).Value)
         proj   = Trim(.Range(P_PROJ).Value)
         fromD  = Format(.Range(P_FROM).Value, "YYYY-MM-DD")
         toD    = Format(.Range(P_TO).Value,   "YYYY-MM-DD")
         folder = Trim(.Range(P_FOLDER).Value)
     End With
 
-    If host = "" Or user = "" Or pass_ = "" Then
-        MsgBox "Please fill in Host URL, Username and Password on the Parameters sheet.", _
+    If host = "" Or user = "" Then
+        MsgBox "Please fill in Host URL and Username on the Parameters sheet.", _
                vbExclamation, "Configuration Incomplete"
+        Exit Sub
+    End If
+
+    ' ── prompt for password (masked) — not stored anywhere on the sheet ───────
+    pass_ = PasswordForm.GetPassword()
+    If PasswordForm.Cancelled Or pass_ = "" Then
+        MsgBox "No password entered — download cancelled.", _
+               vbExclamation, "Cancelled"
         Exit Sub
     End If
     If Right(folder, 1) <> "\" Then folder = folder & "\"
