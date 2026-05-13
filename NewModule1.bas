@@ -184,14 +184,17 @@ End Function
 '  HTTP
 ' ═══════════════════════════════════════════════════════════════════════════════
 Private Function HttpGet(url As String, user As String, pass_ As String) As String
+    ' Uses MSXML2.XMLHTTP which honours the Windows/IE proxy settings
+    ' automatically — required on corporate networks where WinHttp's
+    ' separate proxy config isn't set up.
     On Error GoTo ErrH
     Dim h As Object
-    Set h = CreateObject("WinHttp.WinHttpRequest.5.1")
+    Set h = CreateObject("MSXML2.XMLHTTP.6.0")
     h.Open "GET", url, False
-    h.SetRequestHeader "Authorization", "Basic " & B64(user & ":" & pass_)
-    h.SetRequestHeader "Accept", "application/json"
+    h.setRequestHeader "Authorization", "Basic " & B64(user & ":" & pass_)
+    h.setRequestHeader "Accept", "application/json"
     h.Send
-    If h.Status = 200 Then HttpGet = h.ResponseText Else _
+    If h.Status = 200 Then HttpGet = h.responseText Else _
         Debug.Print "HTTP " & h.Status & " " & Left(url, 100)
     Exit Function
 ErrH: Debug.Print "HttpGet: " & Err.Description
@@ -201,22 +204,21 @@ Private Function SaveBinary(url As String, user As String, pass_ As String, _
                              path As String) As Long
     On Error GoTo ErrH
     Dim h As Object
-    Set h = CreateObject("WinHttp.WinHttpRequest.5.1")
+    Set h = CreateObject("MSXML2.XMLHTTP.6.0")
     h.Open "GET", url, False
-    h.SetRequestHeader "Authorization", "Basic " & B64(user & ":" & pass_)
-    h.SetRequestHeader "Accept", "*/*"
+    h.setRequestHeader "Authorization", "Basic " & B64(user & ":" & pass_)
+    h.setRequestHeader "Accept", "*/*"
     h.Send
     If h.Status <> 200 Then
         Debug.Print "SaveBinary HTTP " & h.Status
         Exit Function
     End If
-    ' reuse the ADODB.Stream pattern already present in the original GenCSV
     Dim st As Object
     Set st = CreateObject("ADODB.Stream")
     st.Type = 1          ' adTypeBinary
     st.Open
-    st.Write h.ResponseBody
-    st.SaveToFile path, 2  ' adSaveCreateOverWrite
+    st.Write h.responseBody   ' Byte array from MSXML2
+    st.SaveToFile path, 2     ' adSaveCreateOverWrite
     st.Close
     SaveBinary = FileLen(path)
     Exit Function
