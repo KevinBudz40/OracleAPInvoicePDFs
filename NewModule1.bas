@@ -96,10 +96,10 @@ Public Sub DownloadInvoicePDFs()
             GoTo NextInv
         End If
 
-        ' ── fetch SCANNED_INVOICE_IMAGE attachments ───────────────────────────
+        ' ── fetch all attachments (CategoryName is not a filterable field) ──────
         Dim attUrl As String
         attUrl = host & "/fscmRestApi/resources/11.13.18.05/invoices/" & invId & _
-                 "/child/attachments?q=CategoryName%3D%27SCANNED_INVOICE_IMAGE%27"
+                 "/child/attachments"
         Dim attJson As String
         attJson = HttpGet(attUrl, user, pass_)
 
@@ -114,15 +114,21 @@ Public Sub DownloadInvoicePDFs()
         nItems = ParseItems(attJson, items)
 
         If nItems = 0 Then
-            WriteLog logRow, invNum, invId, "", "No SCANNED_INVOICE_IMAGE attachments", "", Null
+            WriteLog logRow, invNum, invId, "", "No attachments found", "", Null
             logRow = logRow + 1
             GoTo NextInv
         End If
 
-        ' ── download each attachment ──────────────────────────────────────────
+        ' ── download each Scanned Invoice Image attachment ────────────────────
         Dim j As Long
+        Dim nDownloaded As Long : nDownloaded = 0
         For j = 0 To nItems - 1
             Dim fName As String : fName = JVal(items(j), "FileName")
+            Dim fCat  As String : fCat  = JVal(items(j), "Category")
+
+            ' Skip anything that isn't the scanned invoice image
+            If LCase(Trim(fCat)) <> "scanned invoice image" Then GoTo NextAtt
+
             Dim fHref As String : fHref = FileContentsHref(items(j))
 
             If fHref = "" Then
@@ -139,8 +145,15 @@ Public Sub DownloadInvoicePDFs()
                     WriteLog logRow, invNum, invId, fName, "Download failed", "", False
                 End If
             End If
+            nDownloaded = nDownloaded + 1
             logRow = logRow + 1
+NextAtt:
         Next j
+
+        If nDownloaded = 0 Then
+            WriteLog logRow, invNum, invId, "", "No Scanned Invoice Image attachments", "", Null
+            logRow = logRow + 1
+        End If
 
 NextInv:
         DoEvents
@@ -214,32 +227,73 @@ End Function
 '  JSON HELPERS
 ' ═══════════════════════════════════════════════════════════════════════════════
 Private Function ParseItems(json As String, ByRef items() As String) As Long
+    ' Extracts each top-level object from an Oracle "items":[{...},{...}] array.
+    '
+    ' Two earlier bugs fixed here:
+    '   1. Braces inside JSON string VALUES (e.g. the DownloadInfo field whose
+    '      value is itself a JSON blob) were being counted, causing premature
+    '      extraction before fields like "Category" were reached.
+    '   2. The depth counter was only incremented when depth=0, so nested
+    '      objects never increased depth beyond 1.
+    ' Fix: track whether the scanner is inside a quoted string and skip
+    ' all structural characters ({, }, [, ]) while inside one.
     ReDim items(0 To 500)
-    Dim p As Long : p = InStr(json, """items"":[")
+    Dim p As Long : p = InStr(json, """items""")
     If p = 0 Then Exit Function
     p = InStr(p, json, "[") + 1
-    Dim depth As Long, oStart As Long, count As Long
+
+    Dim depth  As Long
+    Dim oStart As Long
+    Dim count  As Long
+    Dim insideStr As Boolean : insideStr = False
+
     Do While p <= Len(json)
         Dim c As String : c = Mid(json, p, 1)
-        Select Case c
-            Case "{" : If depth = 0 Then oStart = p : depth = depth + 1
-            Case "}" : depth = depth - 1
-                       If depth = 0 And oStart > 0 Then
-                           items(count) = Mid(json, oStart, p - oStart + 1)
-                           count = count + 1 : oStart = 0
-                       End If
-            Case "]" : If depth = 0 Then Exit Do
-        End Select
+
+        If insideStr Then
+            ' Inside a string value — only care about escape and closing quote
+            If c = "\" Then
+                p = p + 1           ' skip the escaped character
+            ElseIf c = """" Then
+                insideStr = False
+            End If
+        Else
+            Select Case c
+                Case """"
+                    insideStr = True    ' entering a string value
+                Case "{"
+                    If depth = 0 Then oStart = p
+                    depth = depth + 1       ' always increment (fixes bug #2)
+                Case "}"
+                    depth = depth - 1
+                    If depth = 0 And oStart > 0 Then
+                        items(count) = Mid(json, oStart, p - oStart + 1)
+                        count = count + 1
+                        oStart = 0
+                    End If
+                Case "]"
+                    If depth = 0 Then Exit Do
+            End Select
+        End If
+
         p = p + 1
     Loop
     ParseItems = count
 End Function
 
 Private Function JVal(json As String, key As String) As String
-    Dim pat As String : pat = """" & key & """:"
+    ' Finds "key" then skips optional whitespace + colon + whitespace before value.
+    ' Handles both compact JSON ("key":"val") and pretty-printed ("key" : "val").
+    Dim pat As String : pat = """" & key & """"
     Dim sp As Long    : sp = InStr(json, pat)
     If sp = 0 Then Exit Function
     sp = sp + Len(pat)
+    ' skip whitespace before colon
+    Do While sp <= Len(json) And Mid(json, sp, 1) = " " : sp = sp + 1 : Loop
+    ' expect colon
+    If Mid(json, sp, 1) <> ":" Then Exit Function
+    sp = sp + 1
+    ' skip whitespace after colon
     Do While sp <= Len(json) And Mid(json, sp, 1) = " " : sp = sp + 1 : Loop
     Dim ch As String : ch = Mid(json, sp, 1)
     If ch = """" Then
@@ -260,16 +314,34 @@ Private Function JVal(json As String, key As String) As String
 End Function
 
 Private Function FileContentsHref(itemJson As String) As String
+    ' Locates the link object whose "name" is "FileContents" and returns its "href".
+    ' Tolerates pretty-printed JSON with spaces around colons.
     Dim p As Long : p = 1
     Do
-        Dim np As Long : np = InStr(p, itemJson, """name"":""FileContents""")
+        ' Find "name" key with value "FileContents" (allow spaces around colon)
+        Dim np As Long : np = InStr(p, itemJson, """name""")
         If np = 0 Then Exit Do
-        Dim hp As Long : hp = InStrRev(itemJson, """href"":""", np)
-        If hp > 0 Then
-            Dim hs As Long : hs = hp + 8
-            Dim he As Long : he = InStr(hs, itemJson, """")
-            FileContentsHref = Mid(itemJson, hs, he - hs)
-            Exit Function
+        ' skip to colon then to value
+        Dim cp As Long : cp = InStr(np + 6, itemJson, ":")
+        If cp = 0 Then Exit Do
+        cp = cp + 1
+        Do While cp <= Len(itemJson) And Mid(itemJson, cp, 1) = " " : cp = cp + 1 : Loop
+        If Mid(itemJson, cp, 14) = """FileContents""" Then
+            ' found the right link object — now look backward for the href value
+            Dim hp As Long : hp = InStrRev(itemJson, """href""", np)
+            If hp > 0 Then
+                Dim hc As Long : hc = InStr(hp + 6, itemJson, ":")
+                If hc > 0 Then
+                    hc = hc + 1
+                    Do While hc <= Len(itemJson) And Mid(itemJson, hc, 1) = " " : hc = hc + 1 : Loop
+                    If Mid(itemJson, hc, 1) = """" Then
+                        hc = hc + 1
+                        Dim he As Long : he = InStr(hc, itemJson, """")
+                        FileContentsHref = Mid(itemJson, hc, he - hc)
+                        Exit Function
+                    End If
+                End If
+            End If
         End If
         p = np + 1
     Loop
