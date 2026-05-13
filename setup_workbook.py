@@ -30,7 +30,64 @@ import win32com.client as win32
 WORKBOOK  = r"D:\Nuke\PayablesStandardInvoiceImportTemplate_unprotected.xlsm"
 OUT_FILE  = r"D:\Nuke\AP_Invoice_Downloader.xlsm"
 VBA_FILE  = r"D:\Nuke\NewModule1.bas"
-FORM_FILE = r"D:\Nuke\PasswordForm.frm"
+
+# ── PasswordForm VBA code (injected into a UserForm component via COM) ────────
+# The form builds its controls at runtime in UserForm_Initialize so no
+# companion .frx binary is required.  Using Add(3) instead of Import()
+# ensures Excel registers it as a UserForm (not a standard module).
+FORM_CODE = (
+    "Option Explicit\r\n"
+    "\r\n"
+    "Private WithEvents btnOK     As MSForms.CommandButton\r\n"
+    "Private WithEvents btnCancel As MSForms.CommandButton\r\n"
+    "Private txtPwd               As MSForms.TextBox\r\n"
+    "\r\n"
+    "Public Cancelled As Boolean\r\n"
+    "\r\n"
+    "Private Sub UserForm_Initialize()\r\n"
+    "    Me.Caption = \"Oracle AP Invoice Downloader\"\r\n"
+    "    Me.Width  = 300\r\n"
+    "    Me.Height = 155\r\n"
+    "    Me.StartUpPosition = 1\r\n"
+    "\r\n"
+    "    Dim lbl As MSForms.Label\r\n"
+    "    Set lbl = Me.Controls.Add(\"Forms.Label.1\", \"lblPrompt\")\r\n"
+    "    lbl.Caption = \"Oracle Cloud password:\"\r\n"
+    "    lbl.Left = 12 : lbl.Top = 12 : lbl.Width = 264 : lbl.Height = 18\r\n"
+    "\r\n"
+    "    Set txtPwd = Me.Controls.Add(\"Forms.TextBox.1\", \"txtPwd\")\r\n"
+    "    txtPwd.PasswordChar = \"*\"\r\n"
+    "    txtPwd.Left = 12 : txtPwd.Top = 36 : txtPwd.Width = 264 : txtPwd.Height = 24\r\n"
+    "\r\n"
+    "    Set btnOK = Me.Controls.Add(\"Forms.CommandButton.1\", \"btnOK\")\r\n"
+    "    btnOK.Caption = \"OK\" : btnOK.Default = True\r\n"
+    "    btnOK.Left = 96 : btnOK.Top = 72 : btnOK.Width = 72 : btnOK.Height = 24\r\n"
+    "\r\n"
+    "    Set btnCancel = Me.Controls.Add(\"Forms.CommandButton.1\", \"btnCancel\")\r\n"
+    "    btnCancel.Caption = \"Cancel\" : btnCancel.Cancel = True\r\n"
+    "    btnCancel.Left = 180 : btnCancel.Top = 72 : btnCancel.Width = 72 : btnCancel.Height = 24\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Public Function GetPassword() As String\r\n"
+    "    Cancelled = False\r\n"
+    "    If Not txtPwd Is Nothing Then txtPwd.Text = \"\"\r\n"
+    "    Me.Show vbModal\r\n"
+    "    If Not Cancelled Then GetPassword = txtPwd.Text\r\n"
+    "End Function\r\n"
+    "\r\n"
+    "Private Sub btnOK_Click()\r\n"
+    "    Me.Hide\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Sub btnCancel_Click()\r\n"
+    "    Cancelled = True\r\n"
+    "    Me.Hide\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)\r\n"
+    "    If CloseMode = vbFormControlMenu Then Cancelled = True\r\n"
+    "End Sub\r\n"
+)
 
 # ── Parameters sheet contents ─────────────────────────────────────────────────
 # Column A labels
@@ -149,9 +206,10 @@ def replace_module1(wb, new_code):
 
 def import_password_form(wb):
     """
-    Import PasswordForm.frm into the VBA project.
-    Removes any existing PasswordForm first so re-running setup is safe.
-    The .frm builds its controls entirely at runtime — no companion .frx needed.
+    Create PasswordForm as a real UserForm component via Add(3).
+    Using Import() on a .frm file incorrectly registers it as a standard
+    module, causing 'Invalid outside procedure' on the Begin...End block.
+    Add(3) = vbext_ct_MSForm guarantees Excel treats it as a UserForm.
     """
     vbp = wb.VBProject
 
@@ -163,8 +221,16 @@ def import_password_form(wb):
             print("  Removed existing PasswordForm.")
             break
 
-    vbp.VBComponents.Import(os.path.abspath(FORM_FILE))
-    print("  PasswordForm imported.")
+    # 3 = vbext_ct_MSForm  →  registers as a UserForm, not a standard module
+    uf = vbp.VBComponents.Add(3)
+    uf.Name = "PasswordForm"
+
+    cm    = uf.CodeModule
+    total = cm.CountOfLines
+    if total > 0:
+        cm.DeleteLines(1, total)
+    cm.InsertLines(1, FORM_CODE)
+    print("  PasswordForm created (UserForm) and code injected.")
 
 
 def replace_button_handler(wb):
@@ -221,8 +287,7 @@ def replace_button_handler(wb):
 
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    for path, label in [(WORKBOOK, "source workbook"), (VBA_FILE, "VBA module"),
-                        (FORM_FILE, "password form")]:
+    for path, label in [(WORKBOOK, "source workbook"), (VBA_FILE, "VBA module")]:
         if not os.path.isfile(path):
             sys.exit(f"ERROR: {label} not found:\n  {path}")
 
