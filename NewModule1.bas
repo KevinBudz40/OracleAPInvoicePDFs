@@ -94,9 +94,9 @@ Public Sub DownloadInvoicePDFs()
 
         Application.StatusBar = "Invoice " & invNum & "  (" & (r - 16) & " of " & (lastRow - 16) & ")"
 
-        ' ── resolve InvoiceNumber → InvoiceId ────────────────────────────────
-        Dim invId As String
-        invId = ResolveInvoiceId(host, user, pass_, invNum)
+        ' ── resolve InvoiceNumber → InvoiceId + metadata ─────────────────────
+        Dim invId As String, suppName As String, invAmt As String
+        invId = ResolveInvoiceId(host, user, pass_, invNum, suppName, invAmt)
         If invId = "" Then
             WriteLog logRow, invNum, "", "", "Invoice not found", "", False
             logRow = logRow + 1
@@ -142,7 +142,7 @@ Public Sub DownloadInvoicePDFs()
                 WriteLog logRow, invNum, invId, fName, "No FileContents link", "", False
             Else
                 Dim savePath As String
-                savePath = folder & SafeName(fName, invNum & "_att" & j & ".pdf")
+                savePath = folder & InvoiceFileName(suppName, invNum, invAmt, nDownloaded)
                 Dim bytes As Long
                 bytes = SaveBinary(fHref, user, pass_, savePath)
                 If bytes > 0 Then
@@ -176,15 +176,21 @@ End Sub
 '  ORACLE REST HELPERS
 ' ═══════════════════════════════════════════════════════════════════════════════
 Private Function ResolveInvoiceId(host As String, user As String, pass_ As String, _
-                                   invNum As String) As String
+                                   invNum As String, _
+                                   ByRef suppName As String, _
+                                   ByRef invAmt As String) As String
     Dim url As String
     url = host & "/fscmRestApi/resources/11.13.18.05/invoices" & _
           "?q=InvoiceNumber%3D%27" & invNum & "%27" & _
-          "&fields=InvoiceId%2CInvoiceNumber&limit=1"
+          "&fields=InvoiceId%2CInvoiceNumber%2CSupplierName%2CInvoiceAmount&limit=1"
     Dim json As String : json = HttpGet(url, user, pass_)
     If json = "" Then Exit Function
     Dim items() As String
-    If ParseItems(json, items) > 0 Then ResolveInvoiceId = JVal(items(0), "InvoiceId")
+    If ParseItems(json, items) > 0 Then
+        ResolveInvoiceId = JVal(items(0), "InvoiceId")
+        suppName         = JVal(items(0), "SupplierName")
+        invAmt           = JVal(items(0), "InvoiceAmount")
+    End If
 End Function
 
 ' ═══════════════════════════════════════════════════════════════════════════════
@@ -373,6 +379,30 @@ End Function
 ' ═══════════════════════════════════════════════════════════════════════════════
 '  UTILITY
 ' ═══════════════════════════════════════════════════════════════════════════════
+Private Function InvoiceFileName(suppName As String, invNum As String, _
+                                  invAmt As String, attachIndex As Long) As String
+    ' Builds:  Supplier Name - InvoiceNumber - Amount.pdf
+    ' If there are multiple scanned images on one invoice, appends _2, _3, ...
+    Dim amt As String
+    If invAmt <> "" Then
+        On Error Resume Next
+        amt = Format(CDbl(invAmt), "0.00")
+        If Err.Number <> 0 Then amt = invAmt
+        On Error GoTo 0
+    End If
+
+    Dim base As String
+    If suppName <> "" Then base = suppName & " - "
+    base = base & invNum
+    If amt <> "" Then base = base & " - " & amt
+
+    Dim suffix As String
+    If attachIndex > 0 Then suffix = "_" & (attachIndex + 1) Else suffix = ""
+
+    ' SafeName strips chars illegal in Windows filenames; suffix and .pdf added after
+    InvoiceFileName = SafeName(base, invNum) & suffix & ".pdf"
+End Function
+
 Private Function SafeName(name As String, default_ As String) As String
     If Trim(name) = "" Then SafeName = default_ : Exit Function
     Dim s As String : s = name
