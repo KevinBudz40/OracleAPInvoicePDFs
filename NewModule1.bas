@@ -187,12 +187,11 @@ Private Function ResolveInvoiceId(host As String, user As String, pass_ As Strin
           "?q=InvoiceNumber%3D%27" & invNum & "%27&limit=1"
     Dim json As String : json = HttpGet(url, user, pass_)
     If json = "" Then Exit Function
+
     Dim items() As String
     If ParseItems(json, items) > 0 Then
         ResolveInvoiceId = JVal(items(0), "InvoiceId")
-        ' Oracle uses "SupplierName" in some versions, "VendorName" in others
-        suppName = JVal(items(0), "SupplierName")
-        If suppName = "" Then suppName = JVal(items(0), "VendorName")
+        suppName = JVal(items(0), "Supplier")
         invAmt = JVal(items(0), "InvoiceAmount")
     End If
 End Function
