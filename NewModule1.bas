@@ -179,17 +179,21 @@ Private Function ResolveInvoiceId(host As String, user As String, pass_ As Strin
                                    invNum As String, _
                                    ByRef suppName As String, _
                                    ByRef invAmt As String) As String
+    ' No fields= restriction — requesting an unrecognised field name causes
+    ' Oracle to 400 the whole call, breaking invoice lookup entirely.
+    ' Fetch all fields and parse what we need; unknown names just return "".
     Dim url As String
     url = host & "/fscmRestApi/resources/11.13.18.05/invoices" & _
-          "?q=InvoiceNumber%3D%27" & invNum & "%27" & _
-          "&fields=InvoiceId%2CInvoiceNumber%2CSupplierName%2CInvoiceAmount&limit=1"
+          "?q=InvoiceNumber%3D%27" & invNum & "%27&limit=1"
     Dim json As String : json = HttpGet(url, user, pass_)
     If json = "" Then Exit Function
     Dim items() As String
     If ParseItems(json, items) > 0 Then
         ResolveInvoiceId = JVal(items(0), "InvoiceId")
-        suppName         = JVal(items(0), "SupplierName")
-        invAmt           = JVal(items(0), "InvoiceAmount")
+        ' Oracle uses "SupplierName" in some versions, "VendorName" in others
+        suppName = JVal(items(0), "SupplierName")
+        If suppName = "" Then suppName = JVal(items(0), "VendorName")
+        invAmt = JVal(items(0), "InvoiceAmount")
     End If
 End Function
 
