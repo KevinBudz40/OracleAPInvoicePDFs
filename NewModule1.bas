@@ -396,9 +396,9 @@ Private Function InvoiceFileName(suppName As String, invNum As String, _
     End If
 
     Dim base As String
-    If suppName <> "" Then base = suppName & " - "
+    If suppName <> "" Then base = suppName & "-"
     base = base & invNum
-    If amt <> "" Then base = base & " - " & amt
+    If amt <> "" Then base = base & "-" & amt
 
     Dim suffix As String
     If attachIndex > 0 Then suffix = "_" & (attachIndex + 1) Else suffix = ""
