@@ -146,7 +146,6 @@ Public Sub DownloadInvoicePDFs()
                 Dim bytes As Long
                 bytes = SaveBinary(fHref, user, pass_, savePath)
                 If bytes > 0 Then
-                    StampDot savePath
                     WriteLog logRow, invNum, invId, fName, _
                              "Saved  " & Format(bytes, "#,##0") & " bytes", savePath, True
                 Else
@@ -403,26 +402,6 @@ Private Function InvoiceFileName(suppName As String, invNum As String, _
     ' SafeName strips chars illegal in Windows filenames; suffix and .pdf added after
     InvoiceFileName = SafeName(base, invNum) & suffix & ".pdf"
 End Function
-
-Private Sub StampDot(filePath As String)
-    ' Calls stamp_pdf.py to paint a small black dot in the upper-left of page 1.
-    ' Requirements on the host machine:
-    '   pip install pypdf reportlab
-    '   stamp_pdf.py must be in the same folder as this workbook.
-    ' Silently skips if the script is missing or Python is not on PATH.
-    On Error GoTo ErrH
-    Dim script As String
-    script = ThisWorkbook.Path & "\stamp_pdf.py"
-    If Dir(script) = "" Then Exit Sub          ' not deployed — skip quietly
-    Dim wsh As Object
-    Set wsh = CreateObject("WScript.Shell")
-    ' Run = synchronous (True), hidden window (0)
-    Dim rc As Long
-    rc = wsh.Run("python """ & script & """ """ & filePath & """", 0, True)
-    If rc <> 0 Then Debug.Print "StampDot exit code " & rc & " for " & filePath
-    Exit Sub
-ErrH: Debug.Print "StampDot: " & Err.Description
-End Sub
 
 Private Function SafeName(name As String, default_ As String) As String
     If Trim(name) = "" Then SafeName = default_ : Exit Function
