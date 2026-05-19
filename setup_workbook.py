@@ -267,7 +267,8 @@ def add_button(wb):
     its Click handler into the sheet's own code module.
     """
     ws  = wb.Sheets("Parameters")
-    row = 14   # one row below "PDF Save Folder"
+    ws.Activate()              # must be active sheet before adding ActiveX controls
+    row = 14
     ole = ws.OLEObjects().Add(
         ClassType="Forms.CommandButton.1",
         Left    = ws.Cells(row, 2).Left,
