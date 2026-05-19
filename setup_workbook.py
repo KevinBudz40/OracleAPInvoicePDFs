@@ -268,13 +268,12 @@ def add_button(wb):
     """
     ws  = wb.Sheets("Parameters")
     ws.Activate()              # must be active sheet before adding ActiveX controls
-    row = 14
     ole = ws.OLEObjects().Add(
         ClassType="Forms.CommandButton.1",
-        Left    = ws.Cells(row, 2).Left,
-        Top     = ws.Cells(row, 2).Top,
-        Width   = 200,
-        Height  = 26,
+        Left    = 6,
+        Top     = 213,
+        Width   = 165,
+        Height  = 24,
     )
     ole.Name = "CommandButton1"
     ole.Object.Caption = "Download Invoice PDFs"
@@ -283,7 +282,7 @@ def add_button(wb):
     sheet_comp = wb.VBProject.VBComponents(ws.CodeName)
     cm = sheet_comp.CodeModule
     cm.InsertLines(cm.CountOfLines + 1, BUTTON_CODE)
-    print(f"  CommandButton1 added to Parameters at row {row} and handler wired.")
+    print(f"  CommandButton1 added to Parameters and handler wired.")
 
 
 def replace_button_handler(wb):
@@ -376,6 +375,12 @@ def main():
         print(f"\nOpening: {src}")
         wb = xl.Workbooks.Open(src, UpdateLinks=0, ReadOnly=False)
         time.sleep(0.5)
+
+        # Hide the VBA IDE window — it flashes open when VBProject is accessed
+        try:
+            xl.VBE.MainWindow.Visible = False
+        except Exception:
+            pass
 
         print("\n[1/5] Setting up sheets …")
         setup_sheets(wb)
