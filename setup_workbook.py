@@ -153,6 +153,21 @@ def populate_parameters(wb):
     ws = wb.Sheets("Parameters")
     ws.Cells.ClearContents()
 
+    # Strip Oracle blue/teal cell fill colours (UsedRange only — Cells is 1M+ rows)
+    ws.UsedRange.Interior.ColorIndex = -4142   # xlColorIndexNone
+
+    # Delete all shapes except OLE controls (Type 12 = ActiveX CommandButton)
+    to_delete = [ws.Shapes.Item(i).Name
+                 for i in range(1, ws.Shapes.Count + 1)
+                 if ws.Shapes.Item(i).Type != 12]
+    for name in to_delete:
+        try:
+            ws.Shapes(name).Delete()
+        except Exception:
+            pass
+    if to_delete:
+        print(f"  Removed {len(to_delete)} shape(s) (Oracle image etc.).")
+
     for addr, val in PARAM_LABELS.items():
         ws.Range(addr).Value = val
 
@@ -366,7 +381,7 @@ def main():
             ws_par = wb.Sheets("Parameters")
             ole    = ws_par.OLEObjects("CommandButton1")
             ole.Object.Caption = "Download Invoice PDFs"
-            ole.Top    = ws_par.Cells(11, 2).Top
+            ole.Top    = ws_par.Cells(14, 2).Top
             ole.Left   = ws_par.Cells(11, 2).Left
             ole.Width  = 150
             ole.Height = 24
