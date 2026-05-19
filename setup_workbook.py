@@ -165,7 +165,10 @@ def populate_parameters(wb):
 
 def populate_log(wb):
     ws = wb.Sheets("Invoice_Log")
-    ws.Cells.ClearContents()   # wipe all Oracle template content
+    # UnMerge before Clear — merged cells survive ClearContents and cause
+    # the tall/spanned-row display glitch from the Oracle FBDI template.
+    ws.UsedRange.UnMerge()
+    ws.UsedRange.Clear()       # clears content + formatting (not just contents)
     for col, hdr in enumerate(LOG_HEADERS, start=1):
         ws.Cells(2, col).Value = hdr
     print("  Invoice_Log headers set.")
