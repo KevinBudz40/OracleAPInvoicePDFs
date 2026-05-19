@@ -99,10 +99,13 @@ PARAM_LABELS = {
     "A7":  "─── Date Range ───",
     "A9":  "From Date",
     "A10": "To Date",
-    "A12": "─── Output ───",
-    "A13": "PDF Save Folder",
-    "A15": "─── Invoice Numbers ───",
-    "A16": "Invoice Number",          # header row
+    "A11": "─── Output ───",
+    "A12": "PDF Save Folder",          # B12 — row 13 left blank before button
+    # Row 13 blank (spacer before button at row 14)
+    # Row 14 = Download button
+    # Row 15 blank (spacer after button)
+    "A16": "─── Invoice Numbers ───",
+    "A17": "Invoice Number",           # header row; data starts at row 18
 }
 
 # Column B default values  (fill in user/pass manually)
@@ -110,10 +113,10 @@ PARAM_DEFAULTS = {
     "B3":  "https://eese.fa.us8.oraclecloud.com",
     "B9":  "2026-04-01",
     "B10": "2026-04-30",
-    "B13": r"D:\Nuke\invoice_pdfs",
+    "B12": r"D:\Nuke\invoice_pdfs",
 }
 
-TEST_INVOICE = "5523448494"   # placed in A17
+TEST_INVOICE = "5523448494"   # placed in A18
 
 # ── Invoice_Log headers (row 2) ───────────────────────────────────────────────
 LOG_HEADERS = [
@@ -159,7 +162,7 @@ def populate_parameters(wb):
     for addr, val in PARAM_DEFAULTS.items():
         ws.Range(addr).Value = val
 
-    ws.Range("A17").Value = TEST_INVOICE
+    ws.Range("A18").Value = TEST_INVOICE
     print("  Parameters sheet populated.")
 
 
@@ -269,8 +272,8 @@ def add_button(wb):
         ClassType="Forms.CommandButton.1",
         Left    = ws.Cells(row, 2).Left,
         Top     = ws.Cells(row, 2).Top,
-        Width   = 150,
-        Height  = 24,
+        Width   = 200,
+        Height  = 26,
     )
     ole.Name = "CommandButton1"
     ole.Object.Caption = "Download Invoice PDFs"

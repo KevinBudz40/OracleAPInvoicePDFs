@@ -23,8 +23,8 @@ Private Const P_USER   As String = "B4"   ' Username
 ' Password is prompted at runtime (masked) — not stored on the sheet
 Private Const P_FROM   As String = "B9"   ' From Date (YYYY-MM-DD)
 Private Const P_TO     As String = "B10"  ' To Date   (YYYY-MM-DD)
-Private Const P_FOLDER As String = "B13"  ' PDF save folder
-' Invoice numbers start at row 17, column A (below a small header at row 16)
+Private Const P_FOLDER As String = "B12"  ' PDF save folder
+' Invoice numbers start at row 18, column A (below a small header at row 17)
 
 ' ── Colours ──────────────────────────────────────────────────────────────────
 Private Const CLR_GREEN  As Long = 13561798   ' RGB(198,239,206)
@@ -71,9 +71,9 @@ Public Sub DownloadInvoicePDFs()
     Dim lastRow As Long
     lastRow = wsPar.Cells(wsPar.Rows.Count, 1).End(xlUp).Row
 
-    If lastRow < 17 Then
+    If lastRow < 18 Then
         MsgBox "No invoice numbers found." & vbLf & _
-               "Enter invoice numbers in column A starting at row 17 of the Parameters sheet.", _
+               "Enter invoice numbers in column A starting at row 18 of the Parameters sheet.", _
                vbExclamation, "No Invoices"
         Exit Sub
     End If
@@ -84,7 +84,7 @@ Public Sub DownloadInvoicePDFs()
     Dim logRow As Long : logRow = 3
     Dim r As Long
 
-    For r = 17 To lastRow
+    For r = 18 To lastRow
         Dim invNum As String
         invNum = Trim(wsPar.Cells(r, 1).Value)
         If invNum = "" Then GoTo NextInv
