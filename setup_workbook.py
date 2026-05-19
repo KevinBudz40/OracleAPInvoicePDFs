@@ -167,7 +167,7 @@ def populate_parameters(wb):
 
 def populate_log(wb):
     ws = wb.Sheets("Invoice_Log")
-    ws.Range("A2:F2").ClearContents()
+    ws.Cells.ClearContents()   # wipe all Oracle template content
     for col, hdr in enumerate(LOG_HEADERS, start=1):
         ws.Cells(2, col).Value = hdr
     print("  Invoice_Log headers set.")
