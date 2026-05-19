@@ -97,7 +97,6 @@ PARAM_LABELS = {
     "A4":  "Username",
     # A5 intentionally omitted — password is prompted at runtime (masked)
     "A7":  "─── Date Range ───",
-    "A8":  "Project Number",
     "A9":  "From Date",
     "A10": "To Date",
     "A12": "─── Output ───",
@@ -109,7 +108,6 @@ PARAM_LABELS = {
 # Column B default values  (fill in user/pass manually)
 PARAM_DEFAULTS = {
     "B3":  "https://eese.fa.us8.oraclecloud.com",
-    "B8":  "22HALOPS",
     "B9":  "2026-04-01",
     "B10": "2026-04-30",
     "B13": r"D:\Nuke\invoice_pdfs",
@@ -363,13 +361,18 @@ def main():
         print("\n[6/7] Updating CommandButton1_Click and button caption …")
         replace_button_handler(wb)
 
-        # Set button caption directly via the OLEObjects COM interface
+        # Set button caption and reposition it below "To Date" (row 10)
         try:
-            btn = wb.Sheets(1).OLEObjects("CommandButton1").Object
-            btn.Caption = "Download Invoice PDFs"
-            print("  Button caption set to 'Download Invoice PDFs'")
+            ws_par = wb.Sheets("Parameters")
+            ole    = ws_par.OLEObjects("CommandButton1")
+            ole.Object.Caption = "Download Invoice PDFs"
+            ole.Top    = ws_par.Cells(11, 2).Top
+            ole.Left   = ws_par.Cells(11, 2).Left
+            ole.Width  = 150
+            ole.Height = 24
+            print("  Button repositioned below To Date and caption set.")
         except Exception as e:
-            print(f"  Note: could not rename button caption: {e}")
+            print(f"  Note: could not update button: {e}")
 
         print(f"\n[7/7] Saving as {OUT_FILE} …")
         # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)

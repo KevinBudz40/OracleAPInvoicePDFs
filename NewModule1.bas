@@ -22,7 +22,6 @@ Private Const SH_LOG    As String = "Invoice_Log"
 Private Const P_HOST   As String = "B3"   ' Oracle Cloud host URL
 Private Const P_USER   As String = "B4"   ' Username
 ' Password is prompted at runtime (masked) — not stored on the sheet
-Private Const P_PROJ   As String = "B8"   ' Project Number
 Private Const P_FROM   As String = "B9"   ' From Date (YYYY-MM-DD)
 Private Const P_TO     As String = "B10"  ' To Date   (YYYY-MM-DD)
 Private Const P_FOLDER As String = "B13"  ' PDF save folder
