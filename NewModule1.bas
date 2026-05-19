@@ -421,8 +421,8 @@ End Function
 ' ═══════════════════════════════════════════════════════════════════════════════
 Private Sub InitLog()
     Dim ws As Worksheet : Set ws = ThisWorkbook.Sheets(SH_LOG)
-    ws.Range("A3:G" & ws.Rows.Count).ClearContents
-    ws.Range("A3:G" & ws.Rows.Count).Interior.ColorIndex = xlNone
+    ws.Range("A3:D" & ws.Rows.Count).ClearContents
+    ws.Range("A3:D" & ws.Rows.Count).Interior.ColorIndex = xlNone
 End Sub
 
 Private Sub WriteLog(rowNum As Long, invNum As String, invId As String, _
@@ -430,11 +430,9 @@ Private Sub WriteLog(rowNum As Long, invNum As String, invId As String, _
                      Optional success As Variant)
     Dim ws As Worksheet : Set ws = ThisWorkbook.Sheets(SH_LOG)
     ws.Cells(rowNum, 1).Value = invNum
-    ws.Cells(rowNum, 2).Value = invId
-    ws.Cells(rowNum, 3).Value = fName
-    ws.Cells(rowNum, 4).Value = status
-    ws.Cells(rowNum, 5).Value = savedPath
-    ws.Cells(rowNum, 6).Value = Now()
+    ws.Cells(rowNum, 2).Value = fName
+    ws.Cells(rowNum, 3).Value = status
+    ws.Cells(rowNum, 4).Value = savedPath
     Dim clr As Long
     If IsMissing(success) Or IsNull(success) Then
         clr = CLR_YELLOW
@@ -443,6 +441,6 @@ Private Sub WriteLog(rowNum As Long, invNum As String, invId As String, _
     Else
         clr = CLR_RED
     End If
-    ws.Cells(rowNum, 4).Interior.Color = clr
+    ws.Cells(rowNum, 3).Interior.Color = clr
     DoEvents
 End Sub

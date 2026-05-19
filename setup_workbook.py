@@ -119,8 +119,7 @@ TEST_INVOICE = "5523448494"   # placed in A17
 
 # ── Invoice_Log headers (row 2) ───────────────────────────────────────────────
 LOG_HEADERS = [
-    "Invoice Number", "Invoice ID", "File Name",
-    "Status", "Saved Path", "Timestamp"
+    "Invoice Number", "File Name", "Status", "Saved Path"
 ]
 
 # ── Replacement CommandButton1_Click ─────────────────────────────────────────
@@ -172,6 +171,21 @@ def populate_log(wb):
     for col, hdr in enumerate(LOG_HEADERS, start=1):
         ws.Cells(2, col).Value = hdr
     print("  Invoice_Log headers set.")
+
+
+def setup_sheets(wb):
+    """
+    Combine Instructions + Parameters into one tab.
+    Sheet1 (has the button) becomes 'Parameters'.
+    Sheet2 (old data interface) is deleted.
+    Sheet3 (old lines interface) becomes 'Invoice_Log'.
+    """
+    rename_sheet_by_index(wb, 1, "Parameters")
+    # Delete Sheet2 — DisplayAlerts is already False so no confirmation dialog
+    print(f"  Deleting sheet 2 '{wb.Sheets(2).Name}'")
+    wb.Sheets(2).Delete()
+    # What was Sheet3 is now Sheet2
+    rename_sheet_by_index(wb, 2, "Invoice_Log")
 
 
 def replace_module1(wb, new_code):
@@ -324,9 +338,8 @@ def main():
         wb = xl.Workbooks.Open(src, UpdateLinks=0, ReadOnly=False)
         time.sleep(0.5)
 
-        print("\n[1/6] Renaming sheets …")
-        rename_sheet_by_index(wb, 2, "Parameters")
-        rename_sheet_by_index(wb, 3, "Invoice_Log")
+        print("\n[1/6] Setting up sheets (combining Instructions + Parameters) …")
+        setup_sheets(wb)
 
         print("\n[2/6] Populating Parameters sheet …")
         populate_parameters(wb)
