@@ -150,23 +150,8 @@ def rename_sheet_by_index(wb, one_based_index, new_name):
 
 
 def populate_parameters(wb):
+    """Write labels and defaults onto the brand-new blank Parameters sheet."""
     ws = wb.Sheets("Parameters")
-    ws.Cells.ClearContents()
-
-    # Strip Oracle blue/teal cell fill colours (UsedRange only — Cells is 1M+ rows)
-    ws.UsedRange.Interior.ColorIndex = -4142   # xlColorIndexNone
-
-    # Delete all shapes except OLE controls (Type 12 = ActiveX CommandButton)
-    to_delete = [ws.Shapes.Item(i).Name
-                 for i in range(1, ws.Shapes.Count + 1)
-                 if ws.Shapes.Item(i).Type != 12]
-    for name in to_delete:
-        try:
-            ws.Shapes(name).Delete()
-        except Exception:
-            pass
-    if to_delete:
-        print(f"  Removed {len(to_delete)} shape(s) (Oracle image etc.).")
 
     for addr, val in PARAM_LABELS.items():
         ws.Range(addr).Value = val
@@ -188,16 +173,26 @@ def populate_log(wb):
 
 def setup_sheets(wb):
     """
-    Combine Instructions + Parameters into one tab.
-    Sheet1 (has the button) becomes 'Parameters'.
-    Sheet2 (old data interface) is deleted.
-    Sheet3 (old lines interface) becomes 'Invoice_Log'.
+    Add a brand-new blank sheet as 'Parameters' (position 1).
+    Delete ALL three Oracle template sheets (old Sheet1, AP_INVOICES_INTERFACE,
+    AP_INVOICE_LINES_INTERFACE).
+    The last remaining sheet becomes 'Invoice_Log'.
     """
-    rename_sheet_by_index(wb, 1, "Parameters")
-    # Delete Sheet2 — DisplayAlerts is already False so no confirmation dialog
-    print(f"  Deleting sheet 2 '{wb.Sheets(2).Name}'")
-    wb.Sheets(2).Delete()
-    # What was Sheet3 is now Sheet2
+    # 1. Add a brand-new blank sheet (goes in after active sheet by default)
+    #    then move it to position 1.  Using Before= inline hangs via COM.
+    params = wb.Sheets.Add()
+    params.Name = "Parameters"
+    params.Move(Before=wb.Sheets(1))
+    print("  Created new blank 'Parameters' sheet at position 1.")
+
+    # Positions have shifted +1; oracle sheets are now at 2, 3, 4.
+    # Delete the first two Oracle sheets; keep the last one to rename.
+    for _ in range(2):
+        name = wb.Sheets(2).Name
+        print(f"  Deleting Oracle template sheet '{name}'")
+        wb.Sheets(2).Delete()
+
+    # The surviving Oracle sheet is now at position 2 — rename it Invoice_Log
     rename_sheet_by_index(wb, 2, "Invoice_Log")
 
 
@@ -258,6 +253,30 @@ def import_password_form(wb):
         cm.DeleteLines(1, total)
     cm.InsertLines(1, FORM_CODE)
     print("  PasswordForm created (UserForm) and code injected.")
+
+
+def add_button(wb):
+    """
+    Drop a fresh ActiveX CommandButton onto the new Parameters sheet and wire
+    its Click handler into the sheet's own code module.
+    """
+    ws  = wb.Sheets("Parameters")
+    row = 14   # one row below "PDF Save Folder"
+    ole = ws.OLEObjects().Add(
+        ClassType="Forms.CommandButton.1",
+        Left    = ws.Cells(row, 2).Left,
+        Top     = ws.Cells(row, 2).Top,
+        Width   = 150,
+        Height  = 24,
+    )
+    ole.Name = "CommandButton1"
+    ole.Object.Caption = "Download Invoice PDFs"
+
+    # Wire the Click handler into the sheet's own class module
+    sheet_comp = wb.VBProject.VBComponents(ws.CodeName)
+    cm = sheet_comp.CodeModule
+    cm.InsertLines(cm.CountOfLines + 1, BUTTON_CODE)
+    print(f"  CommandButton1 added to Parameters at row {row} and handler wired.")
 
 
 def replace_button_handler(wb):
@@ -351,16 +370,16 @@ def main():
         wb = xl.Workbooks.Open(src, UpdateLinks=0, ReadOnly=False)
         time.sleep(0.5)
 
-        print("\n[1/6] Setting up sheets (combining Instructions + Parameters) …")
+        print("\n[1/5] Setting up sheets …")
         setup_sheets(wb)
 
-        print("\n[2/6] Populating Parameters sheet …")
+        print("\n[2/5] Populating Parameters sheet …")
         populate_parameters(wb)
 
-        print("\n[3/6] Setting Invoice_Log headers …")
+        print("\n[3/5] Setting Invoice_Log headers …")
         populate_log(wb)
 
-        print("\n[4/6] Replacing Module1 VBA …")
+        print("\n[4/5] Replacing Module1 VBA …")
         try:
             replace_module1(wb, new_code)
         except Exception as e:
@@ -370,26 +389,11 @@ def main():
             print("    › Macro Settings › [x] Trust access to the VBA project object model")
             raise
 
-        print("\n[5/7] Importing PasswordForm …")
+        print("\n[5/5] Importing PasswordForm and adding Download button …")
         import_password_form(wb)
+        add_button(wb)
 
-        print("\n[6/7] Updating CommandButton1_Click and button caption …")
-        replace_button_handler(wb)
-
-        # Set button caption and reposition it below "To Date" (row 10)
-        try:
-            ws_par = wb.Sheets("Parameters")
-            ole    = ws_par.OLEObjects("CommandButton1")
-            ole.Object.Caption = "Download Invoice PDFs"
-            ole.Top    = ws_par.Cells(14, 2).Top
-            ole.Left   = ws_par.Cells(11, 2).Left
-            ole.Width  = 150
-            ole.Height = 24
-            print("  Button repositioned below To Date and caption set.")
-        except Exception as e:
-            print(f"  Note: could not update button: {e}")
-
-        print(f"\n[7/7] Saving as {OUT_FILE} …")
+        print(f"\nSaving as {OUT_FILE} …")
         # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
         wb.SaveAs(OUT_FILE, FileFormat=52)
         wb.Close(False)

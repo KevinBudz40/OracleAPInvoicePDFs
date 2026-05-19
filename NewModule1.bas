@@ -5,16 +5,15 @@ Option Explicit
 '  AP Invoice PDF Downloader
 '  Oracle Fusion Cloud — Payables
 '
-'  Adapted from Oracle Payables Standard Invoice Import FBDI template.
-'  CommandButton1 on Sheet1 ("Instructions") calls DownloadInvoicePDFs.
+'  Oracle Fusion Cloud REST API — Payables invoices + attachments endpoints.
+'  CommandButton1 on the Parameters sheet calls DownloadInvoicePDFs.
 '
-'  Sheet layout (rename in Excel before use):
-'    Sheet1  →  Instructions   (keep Oracle layout, button stays)
-'    Sheet2  →  Parameters     (config + invoice list)
-'    Sheet3  →  Invoice_Log    (auto-populated results)
+'  Workbook sheets:
+'    Parameters   — host URL, username, date range, save folder, invoice list
+'    Invoice_Log  — auto-populated download results
 ' ═══════════════════════════════════════════════════════════════════════════════
 
-' ── Sheet names (rename Sheet2/Sheet3 tabs to match) ─────────────────────────
+' ── Sheet names ──────────────────────────────────────────────────────────────
 Private Const SH_PARAMS As String = "Parameters"
 Private Const SH_LOG    As String = "Invoice_Log"
 
@@ -39,13 +38,12 @@ Public Sub DownloadInvoicePDFs()
 
     ' ── read and validate config ──────────────────────────────────────────────
     Dim host   As String, user  As String, pass_  As String
-    Dim proj   As String, fromD As String, toD    As String
+    Dim fromD  As String, toD   As String
     Dim folder As String
 
     With ThisWorkbook.Sheets(SH_PARAMS)
         host   = Trim(.Range(P_HOST).Value)
         user   = Trim(.Range(P_USER).Value)
-        proj   = Trim(.Range(P_PROJ).Value)
         fromD  = Format(.Range(P_FROM).Value, "YYYY-MM-DD")
         toD    = Format(.Range(P_TO).Value,   "YYYY-MM-DD")
         folder = Trim(.Range(P_FOLDER).Value)
