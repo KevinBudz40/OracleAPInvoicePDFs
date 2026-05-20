@@ -268,13 +268,13 @@ def add_button(wb):
     """
     ws  = wb.Sheets("Parameters")
     ws.Activate()              # must be active sheet before adding ActiveX controls
-    ole = ws.OLEObjects().Add(
-        ClassType="Forms.CommandButton.1",
-        Left    = 6,
-        Top     = 213,
-        Width   = 165,
-        Height  = 24,
-    )
+    # Named position args to OLEObjects.Add are silently ignored by win32com;
+    # create with ClassType only, then set geometry as properties.
+    ole = ws.OLEObjects().Add("Forms.CommandButton.1")
+    ole.Left   = 6
+    ole.Top    = 213
+    ole.Width  = 165
+    ole.Height = 24
     ole.Name = "CommandButton1"
     ole.Object.Caption = "Download Invoice PDFs"
 
