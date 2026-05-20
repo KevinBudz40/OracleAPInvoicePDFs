@@ -369,18 +369,19 @@ def main():
     # from crashing the invisible session before we can set up the workbook.
     xl.AutomationSecurity = 3
 
+    # Suppress VBE window before opening — must be set here, before the
+    # workbook loads, otherwise the IDE flashes on screen during VBProject access.
+    try:
+        xl.VBE.MainWindow.Visible = False
+    except Exception:
+        pass
+
     wb = None
     try:
         src = os.path.abspath(WORKBOOK)
         print(f"\nOpening: {src}")
         wb = xl.Workbooks.Open(src, UpdateLinks=0, ReadOnly=False)
         time.sleep(0.5)
-
-        # Hide the VBA IDE window — it flashes open when VBProject is accessed
-        try:
-            xl.VBE.MainWindow.Visible = False
-        except Exception:
-            pass
 
         print("\n[1/5] Setting up sheets …")
         setup_sheets(wb)
